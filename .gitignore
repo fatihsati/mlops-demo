@@ -1,0 +1,5 @@
+.env
+mlflow_artifacts/
+postgres_data/
+*__pycache__/
+src/ds/artifacts/

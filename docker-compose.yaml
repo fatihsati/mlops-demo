@@ -1,0 +1,92 @@
+
+services:
+  db:
+    image: postgres:13
+    container_name: postgres_db
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_DB=${POSTGRES_DB}
+    volumes:
+      - ./postgres_data/:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+
+  mlflow:
+    container_name: mlflow
+    build:
+      dockerfile: dockerfile
+    ports:
+      - 8080:5000
+    environment:
+      - MLFLOW_REGISTRY_STORE_URI=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres_db:5432/${POSTGRES_DB}
+      - MLFLOW_BACKEND_STORE_URI=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres_db:5432/${POSTGRES_DB}
+      - MLFLOW_TRACKING_URI=http://localhost:8080
+      - AWS_ACCESS_KEY_ID=minio_user
+      - AWS_SECRET_ACCESS_KEY=minio_password
+      - MLFLOW_S3_ENDPOINT_URL=http://minio:9000
+      - MLFLOW_ARTIFACTS_DESTINATION=s3://bucket
+    depends_on:
+      - db
+    command: >
+      mlflow models serve -m runs:/abd1ed7c85504c8398a73de9e6909df6/model -p 5000 --host 0.0.0.0 --enable-mlserver
+  
+  # model_inference:
+  #   container_name: model_inference
+  #   build:
+  #     dockerfile: dockerfile
+  #   ports:
+  #     - 5050:5000
+  #   environment:
+  #     # - MLFLOW_REGISTRY_STORE_URI=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres_db:5432/${POSTGRES_DB}
+  #     # - MLFLOW_BACKEND_STORE_URI=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres_db:5432/${POSTGRES_DB}
+  #     # - AWS_ACCESS_KEY_ID=minio_user
+  #     # - AWS_SECRET_ACCESS_KEY=minio_password
+  #     # - MLFLOW_S3_ENDPOINT_URL=http://minio:9000
+  #     # - MLFLOW_ARTIFACTS_DESTINATION=s3://bucket
+  #     - MLFLOW_HOST=mlflow
+  #     - MLFLOW_PORT=8080
+  #   depends_on:
+  #     - db
+  #     - mlflow
+  #     - minio
+  #   restart: always
+  #   command: >
+  #     mlflow models serve -m runs:/abd1ed7c85504c8398a73de9e6909df6/model -p 5000 --host 0.0.0.0
+    
+  # MinIO server for Atrifacts
+  minio:
+    image: minio/minio
+    expose:
+      - "9000"
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - "./mlflow_artifacts/:/data/"
+    environment:
+      MINIO_ROOT_USER: "minio_user"
+      MINIO_ROOT_PASSWORD: "minio_password"
+    healthcheck:
+      test: timeout 5s bash -c ':> /dev/tcp/127.0.0.1/9000' || exit 1
+      interval: 1s
+      timeout: 10s
+      retries: 5
+    command: server /data --console-address ":9001"
+
+  # Create a bucket named "bucket" if it doesn't exist
+  # This can be handled manually for prod. Since it's a one time job.
+  minio-create-bucket:
+    image: minio/mc
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: >
+      bash -c "
+      mc alias set minio http://minio:9000 minio_user minio_password &&
+      if ! mc ls minio/bucket; then
+        mc mb minio/bucket
+      else
+        echo 'bucket already exists'
+      fi
+      "
