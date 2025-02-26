@@ -2,7 +2,7 @@ from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from mlflow import MlflowClient
 import mlflow
-from src.config import settings
+from config import settings
 
 
 mlflow.set_tracking_uri(settings.mlflow.uri)

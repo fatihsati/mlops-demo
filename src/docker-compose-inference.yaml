@@ -1,0 +1,12 @@
+## This is an example docker compose file to show that we can use same docker image for different models
+services:
+  api:
+    build:
+      dockerfile: ./dockerfile-inference
+    ports:
+      - 8000:8000
+    environment:
+      - MLFLOW_HOST=mlflow
+      - MLFLOW_PORT=8080
+      - MODEL_NAME=movie-sentiment
+      - MODEL_ALIAS=champion
