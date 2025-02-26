@@ -18,44 +18,20 @@ services:
       dockerfile: dockerfile
     ports:
       - 8080:5000
+      # - 8000:8000
     environment:
       - MLFLOW_REGISTRY_STORE_URI=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres_db:5432/${POSTGRES_DB}
       - MLFLOW_BACKEND_STORE_URI=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres_db:5432/${POSTGRES_DB}
-      - MLFLOW_TRACKING_URI=http://localhost:8080
-      - AWS_ACCESS_KEY_ID=minio_user
-      - AWS_SECRET_ACCESS_KEY=minio_password
+      - AWS_ACCESS_KEY_ID=${MINIO_USER}
+      - AWS_SECRET_ACCESS_KEY=${MINIO_PW}
       - MLFLOW_S3_ENDPOINT_URL=http://minio:9000
       - MLFLOW_ARTIFACTS_DESTINATION=s3://bucket
     depends_on:
       - db
-    command: >
-      mlflow models serve -m runs:/abd1ed7c85504c8398a73de9e6909df6/model -p 5000 --host 0.0.0.0 --enable-mlserver
-  
-  # model_inference:
-  #   container_name: model_inference
-  #   build:
-  #     dockerfile: dockerfile
-  #   ports:
-  #     - 5050:5000
-  #   environment:
-  #     # - MLFLOW_REGISTRY_STORE_URI=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres_db:5432/${POSTGRES_DB}
-  #     # - MLFLOW_BACKEND_STORE_URI=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres_db:5432/${POSTGRES_DB}
-  #     # - AWS_ACCESS_KEY_ID=minio_user
-  #     # - AWS_SECRET_ACCESS_KEY=minio_password
-  #     # - MLFLOW_S3_ENDPOINT_URL=http://minio:9000
-  #     # - MLFLOW_ARTIFACTS_DESTINATION=s3://bucket
-  #     - MLFLOW_HOST=mlflow
-  #     - MLFLOW_PORT=8080
-  #   depends_on:
-  #     - db
-  #     - mlflow
-  #     - minio
-  #   restart: always
-  #   command: >
-  #     mlflow models serve -m runs:/abd1ed7c85504c8398a73de9e6909df6/model -p 5000 --host 0.0.0.0
     
   # MinIO server for Atrifacts
   minio:
+    container_name: minio
     image: minio/minio
     expose:
       - "9000"
@@ -63,10 +39,10 @@ services:
       - "9000:9000"
       - "9001:9001"
     volumes:
-      - "./mlflow_artifacts/:/data/"
+      - "./minio_data/:/data/"
     environment:
-      MINIO_ROOT_USER: "minio_user"
-      MINIO_ROOT_PASSWORD: "minio_password"
+      MINIO_ROOT_USER: ${MINIO_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_PW}
     healthcheck:
       test: timeout 5s bash -c ':> /dev/tcp/127.0.0.1/9000' || exit 1
       interval: 1s
@@ -83,10 +59,26 @@ services:
         condition: service_healthy
     entrypoint: >
       bash -c "
-      mc alias set minio http://minio:9000 minio_user minio_password &&
+      mc alias set minio http://minio:9000 ${MINIO_USER} ${MINIO_PW} &&
       if ! mc ls minio/bucket; then
         mc mb minio/bucket
       else
         echo 'bucket already exists'
       fi
       "
+
+  # model_inference:
+  #   container_name: model_inference
+  #   build:
+  #     dockerfile: dockerfile
+  #   ports:
+  #     - 5050:5000
+  #   environment:
+  #     - MLFLOW_TRACKING_URI=http://mlflow:5000
+  #   depends_on:
+  #     - db
+  #     - mlflow
+  #     - minio
+  #   restart: always
+  #   command: >
+  #     mlflow models serve -m runs:/abd1ed7c85504c8398a73de9e6909df6/model -p 5000 --host 0.0.0.0
